@@ -596,6 +596,12 @@ RCTAutoInsetsProtocol>
 - (void)removeFromSuperview
 #endif
 {
+    _source = nil;
+    _postMessageScript = nil;
+    _injectedObjectJsonScript = nil;
+    _atStartScript = nil;
+    _atEndScript = nil;
+
   if (_webView) {
     [_webView.configuration.userContentController removeScriptMessageHandlerForName:HistoryShimName];
     [_webView.configuration.userContentController removeScriptMessageHandlerForName:MessageHandlerName];
@@ -1638,33 +1644,53 @@ didFinishNavigation:(WKNavigation *)navigation
 
 - (void)clearCache:(BOOL)includeDiskFiles
 {
-  NSMutableSet *dataTypes = [NSMutableSet setWithArray:@[
-    WKWebsiteDataTypeMemoryCache,
-    WKWebsiteDataTypeOfflineWebApplicationCache,
-  ]];
-  if (@available(iOS 11.3, *)) {
-    [dataTypes addObject:WKWebsiteDataTypeFetchCache];
-  }
-  if (includeDiskFiles) {
-    [dataTypes addObjectsFromArray:@[
-      WKWebsiteDataTypeDiskCache,
-      WKWebsiteDataTypeSessionStorage,
-      WKWebsiteDataTypeLocalStorage,
-      WKWebsiteDataTypeWebSQLDatabases,
-      WKWebsiteDataTypeIndexedDBDatabases
+    NSMutableSet *dataTypes = [NSMutableSet setWithArray:@[
+        WKWebsiteDataTypeMemoryCache,
+        WKWebsiteDataTypeOfflineWebApplicationCache,
     ]];
-  }
-  [self removeData:dataTypes];
+    if (@available(iOS 11.3, *)) {
+        [dataTypes addObject:WKWebsiteDataTypeFetchCache];
+    }
+    
+    if (@available(iOS 16, *)) {
+        [dataTypes addObject:WKWebsiteDataTypeFileSystem];
+    }
+    
+    if (@available(iOS 17, *)) {
+        [dataTypes addObject:WKWebsiteDataTypeHashSalt];
+        [dataTypes addObject:WKWebsiteDataTypeMediaKeys];
+        [dataTypes addObject:WKWebsiteDataTypeSearchFieldRecentSearches];
+    }
+    
+    
+    if (includeDiskFiles) {
+        [dataTypes addObjectsFromArray:@[
+            WKWebsiteDataTypeCookies,
+            WKWebsiteDataTypeDiskCache,
+            WKWebsiteDataTypeLocalStorage,
+            WKWebsiteDataTypeSessionStorage,
+            WKWebsiteDataTypeWebSQLDatabases,
+            WKWebsiteDataTypeIndexedDBDatabases,
+            
+            WKWebsiteDataTypeServiceWorkerRegistrations,
+        ]];
+    }
+    [self removeData:dataTypes];
 }
 
-- (void)removeData:(NSSet *)dataTypes
-{
-  if (_webView == nil) {
-      return;
-  }
-  NSDate *dateFrom = [NSDate dateWithTimeIntervalSince1970:0];
-
-  [_webView.configuration.websiteDataStore removeDataOfTypes:dataTypes modifiedSince:dateFrom completionHandler:^{}];
+- (void)removeData:(NSSet *)dataTypes {
+    NSDate *dateFrom = [NSDate dateWithTimeIntervalSince1970:0];
+    [[WKWebsiteDataStore defaultDataStore] removeDataOfTypes:dataTypes
+                                               modifiedSince:dateFrom
+                                           completionHandler:^{
+        NSLog(@"Cache cleared successfully");
+    }];
+    
+    if (_webView != nil) {
+        [_webView.configuration.websiteDataStore removeDataOfTypes:dataTypes modifiedSince:dateFrom completionHandler:^{
+            NSLog(@"Cache cleared successfully");
+        }];
+    }
 }
 
 #if !TARGET_OS_OSX
